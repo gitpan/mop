@@ -1,0 +1,69 @@
+package mop::manual::intro;
+# ABSTRACT: A manual for p5-mop
+
+__END__
+
+=pod
+
+=head1 NAME
+
+mop::manual::intro - A manual for p5-mop
+
+=head1 CAVEAT
+
+This is the first attempt at a manual for the p5-mop, it is very
+much a work in progress. You can expect gaps and inconsistency in
+these early versions.
+
+Patches are always welcome :)
+
+=head1 TUTORIALS
+
+=over 4
+
+=item L<Moose to MOP|mop::manual::tutorials::moose_to_mop>
+
+=back
+
+=head1 DETAILED SECTIONS
+
+=over 4
+
+=item L<MOP|mop::manual::details::mop>
+
+=item L<Classes|mop::manual::details::classes>
+
+=item L<Attributes|mop::manual::details::attributes>
+
+=item L<Methods|mop::manual::details::methods>
+
+=item L<Roles|mop::manual::details::roles>
+
+=item L<Traits|mop::manual::details::traits>
+
+=back
+
+=head1 BUGS
+
+Since this module is still under development we would prefer to not
+use the RT bug queue and instead use the built in issue tracker on
+L<Github|http://www.github.com>.
+
+=head2 L<Git Repository|https://github.com/stevan/p5-mop-redux>
+
+=head2 L<Issue Tracker|https://github.com/stevan/p5-mop-redux/issues>
+
+=head1 AUTHOR
+
+Stevan Little <stevan.little@iinteractive.com>
+
+Jesse Luehrs <doy@tozt.net>
+
+=head1 COPYRIGHT AND LICENSE
+
+This software is copyright (c) 2013 by Infinity Interactive.
+
+This is free software; you can redistribute it and/or modify it under
+the same terms as the Perl 5 programming language system itself.
+
+=cut
