@@ -5,13 +5,15 @@ use mro;
 use warnings;
 
 use overload ();
-use Scalar::Util;
-use Sub::Name ();
+use Scalar::Util ();
 
-our $VERSION   = '0.01';
+our $VERSION   = '0.02';
 our $AUTHORITY = 'cpan:STEVAN';
 
 our $BOOTSTRAPPED = 0;
+
+use XSLoader;
+XSLoader::load(__PACKAGE__, $VERSION);
 
 use mop::object;
 use mop::class;
@@ -29,59 +31,37 @@ use mop::traits::util;
 sub import {
     shift;
     my $pkg = caller;
+    my %opts = @_;
 
     initialize();
+    mop::internals::syntax::setup_for($pkg);
+    mop::traits::setup_for($pkg);
 
-    foreach my $keyword ( @mop::internals::syntax::AVAILABLE_KEYWORDS ) {
-        _install_sub($pkg, 'mop::internals::syntax', $keyword);
-    }
-
-    foreach my $trait ( @mop::traits::AVAILABLE_TRAITS ) {
-        _install_sub($pkg, 'mop::traits', $trait);
+    # NOTE: don't allow setting attribute or method metaclasses here, because
+    # that is controlled by the class or role metaclass via method_class and
+    # attribute_class.
+    for my $type (qw(class role)) {
+        if (defined(my $meta = $opts{"${type}_metaclass"})) {
+            require(($meta =~ s{::}{/}gr) . '.pm');
+            $^H{"mop/default_${type}_metaclass"} = $meta;
+        }
     }
 }
 
 sub unimport {
     my $pkg = caller;
-    _uninstall_sub($pkg, $_)
-        for @mop::internals::syntax::AVAILABLE_KEYWORDS,
-            @mop::traits::AVAILABLE_TRAITS;
-}
-
-# XXX all of this OVERRIDDEN stuff really needs to go, ideally replaced by
-# lexical exports
-my %OVERRIDDEN;
-
-sub _install_sub {
-    my ($to, $from, $sub) = @_;
-    no strict 'refs';
-    if (defined &{ "${to}::${sub}" }) {
-        push @{ $OVERRIDDEN{$to}{$sub} //= [] }, \&{ "${to}::${sub}" };
-    }
-    no warnings 'redefine';
-    *{ $to . '::' . $sub } = \&{ "${from}::${sub}" };
-}
-
-sub _uninstall_sub {
-    my ($pkg, $sub) = @_;
-    no strict 'refs';
-    delete ${ $pkg . '::' }{$sub};
-    if (my $prev = pop @{ $OVERRIDDEN{$pkg}{$sub} // [] }) {
-        *{ $pkg . '::' . $sub } = $prev;
-    }
+    mop::internals::syntax::teardown_for($pkg);
+    mop::traits::teardown_for($pkg);
 }
 
 sub meta {
     my $pkg = ref($_[0]) || $_[0];
-    no strict 'refs';
-    no warnings 'once';
-    ${ $pkg . '::METACLASS' }
+    mop::internals::util::get_meta($pkg);
 }
 
 sub remove_meta {
     my $pkg = ref($_[0]) || $_[0];
-    no strict 'refs';
-    undef ${ $pkg . '::METACLASS' };
+    mop::internals::util::unset_meta($pkg);
 }
 
 sub id { Hash::Util::FieldHash::id( $_[0] ) }
@@ -121,7 +101,7 @@ sub rebless {
     @into_isa = grep { defined } map { meta($_) } @into_isa;
 
     for my $attr (map { $_->attributes } @from_isa) {
-        $attr->remove_data_in_slot_for($object);
+        $attr->store_data_in_slot_for($object, undef);
     }
 
     bless($object, $into);
@@ -184,9 +164,10 @@ sub dump_object {
     $temp;
 }
 
+# can't call this 'bootstrap' because XSLoader has a special meaning for that
 sub initialize {
     return if $BOOTSTRAPPED;
-    $_->__INIT_METACLASS__ for qw[
+    mop::internals::util::set_meta($_, $_->__INIT_METACLASS__) for qw[
         mop::object
         mop::role
         mop::class
@@ -224,6 +205,10 @@ sub initialize {
     #   - Role does Role
     # is true.
     $Class->add_role( $Role );
+
+    # normally this would be a call to FINALIZE for all of the mop classes,
+    # but that complicates things too much during bootstrapping, and this
+    # is the only thing that would have an actual effect anyway.
     mop::internals::util::apply_all_roles($Class, $Role);
 
     # and now this is no longer needed
@@ -287,13 +272,22 @@ sub initialize {
 
     {
         no warnings 'redefine';
-        *apply_metaclass = Sub::Name::subname apply_metaclass => sub {
-            my ($instance, $new_meta) = @_;
-            rebless $instance, mop::internals::util::fix_metaclass_compatibility($new_meta, $instance);
-        };
+        *apply_metaclass = mop::internals::util::subname(
+            apply_metaclass => sub {
+                my ($instance, $new_meta) = @_;
+                rebless $instance, mop::internals::util::fix_metaclass_compatibility($new_meta, $instance);
+            }
+        );
     }
 
     $BOOTSTRAPPED = 1;
+}
+
+# B::Deparse doesn't know what to do with custom ops
+{
+    package
+        B::Deparse;
+    sub pp_init_attr { "INIT_ATTR " . maybe_targmy(@_, \&unop) }
 }
 
 1;
@@ -308,7 +302,7 @@ mop - A new object system for Perl 5
 
 =head1 VERSION
 
-version 0.01
+version 0.02
 
 =head1 SYNOPSIS
 
@@ -531,6 +525,8 @@ L<Github|http://www.github.com>.
 Stevan Little <stevan.little@iinteractive.com>
 
 Jesse Luehrs <doy@tozt.net>
+
+Florian Ragwitz <rafl@debian.org>
 
 =head1 COPYRIGHT AND LICENSE
 

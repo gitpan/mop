@@ -28,13 +28,25 @@ if (\$ENV{RELEASE_TESTING}) {
 }
 PREREQS
 
+    my $callparser_h = <<'CALLPARSER_H';
+use Devel::CallParser 'callparser1_h', 'callparser_linkable';
+use File::Spec::Functions 'abs2rel';
+{
+    open my $fh, '>', 'callparser1.h' or die $!;
+    print { $fh } callparser1_h or die $!;
+    close $fh or die $!;
+}
+my @linkable = map { abs2rel($_) } callparser_linkable;
+unshift @linkable, '$(BASEEXT)$(OBJ_EXT)' if @linkable;
+$WriteMakefileArgs{OBJECT} = join(' ', @linkable) if @linkable;
+$WriteMakefileArgs{clean}{FILES} .= ' callparser1.h';
+CALLPARSER_H
+
     my $template = $self->$orig(@_);
-    $template =~ s/(WriteMakefile\()/$fixup_prereqs\n$1/;
+    $template =~ s/(WriteMakefile\()/$fixup_prereqs\n$callparser_h\n$1/;
 
     return $template;
 };
 
 __PACKAGE__->meta->make_immutable;
 no Moose;
-
-1;

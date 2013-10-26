@@ -21,6 +21,7 @@ mop/object.pm
 mop/role.pm
 mop/traits.pm
 mop/traits/util.pm
+op.pm
 );
 
 my @scripts = qw(

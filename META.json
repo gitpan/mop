@@ -2,7 +2,8 @@
    "abstract" : "A new object system for Perl 5",
    "author" : [
       "Stevan Little <stevan.little@iinteractive.com>",
-      "Jesse Luehrs <doy@tozt.net>"
+      "Jesse Luehrs <doy@tozt.net>",
+      "Florian Ragwitz <rafl@debian.org>"
    ],
    "dynamic_config" : 0,
    "generated_by" : "Dist::Zilla version 4.300039, CPAN::Meta::Converter version 2.120921",
@@ -22,6 +23,7 @@
    "prereqs" : {
       "configure" : {
          "requires" : {
+            "Devel::CallParser" : "0",
             "ExtUtils::MakeMaker" : "6.30"
          }
       },
@@ -41,20 +43,15 @@
       },
       "runtime" : {
          "requires" : {
-            "B::Hooks::EndOfScope" : "0",
-            "Carp" : "0",
+            "Devel::CallParser" : "0",
             "Hash::Util::FieldHash" : "0",
-            "Parse::Keyword" : "0",
             "Scalar::Util" : "0",
-            "Scope::Guard" : "0",
-            "Sub::Name" : "0",
-            "Variable::Magic" : "0",
+            "XSLoader" : "0",
             "mro" : "0",
             "overload" : "0",
             "parent" : "0",
             "perl" : "v5.16.0",
             "strict" : "0",
-            "twigils" : "0.04",
             "version" : "0",
             "warnings" : "0"
          }
@@ -75,35 +72,39 @@
    "provides" : {
       "mop" : {
          "file" : "lib/mop.pm",
-         "version" : "0.01"
+         "version" : "0.02"
       },
       "mop::attribute" : {
          "file" : "lib/mop/attribute.pm",
-         "version" : "0.01"
+         "version" : "0.02"
       },
       "mop::class" : {
          "file" : "lib/mop/class.pm",
-         "version" : "0.01"
+         "version" : "0.02"
       },
       "mop::method" : {
          "file" : "lib/mop/method.pm",
-         "version" : "0.01"
+         "version" : "0.02"
       },
       "mop::object" : {
          "file" : "lib/mop/object.pm",
-         "version" : "0.01"
+         "version" : "0.02"
       },
       "mop::role" : {
          "file" : "lib/mop/role.pm",
-         "version" : "0.01"
+         "version" : "0.02"
       },
       "mop::traits" : {
          "file" : "lib/mop/traits.pm",
-         "version" : "0.01"
+         "version" : "0.02"
       },
       "mop::traits::util" : {
          "file" : "lib/mop/traits/util.pm",
-         "version" : "0.01"
+         "version" : "0.02"
+      },
+      "op" : {
+         "file" : "lib/op.pm",
+         "version" : "0.02"
       }
    },
    "release_status" : "testing",
@@ -118,7 +119,7 @@
          "web" : "https://github.com/stevan/p5-mop-redux"
       }
    },
-   "version" : "0.01",
+   "version" : "0.02",
    "x_Dist_Zilla" : {
       "perl" : {
          "version" : "5.018000"
@@ -335,6 +336,17 @@
             "version" : "4.300039"
          },
          {
+            "class" : "Dist::Zilla::Plugin::Prereqs",
+            "config" : {
+               "Dist::Zilla::Plugin::Prereqs" : {
+                  "phase" : "configure",
+                  "type" : "requires"
+               }
+            },
+            "name" : "ConfigureRequires",
+            "version" : "4.300039"
+         },
+         {
             "class" : "Dist::Zilla::Plugin::ContributorsFromGit",
             "name" : "ContributorsFromGit",
             "version" : "0.006"
@@ -348,6 +360,11 @@
             "class" : "Dist::Zilla::Plugin::CopyFilesFromBuild",
             "name" : "CopyFilesFromBuild",
             "version" : "0.103510"
+         },
+         {
+            "class" : "inc::BumpVersion",
+            "name" : "=inc::BumpVersion",
+            "version" : null
          },
          {
             "class" : "Dist::Zilla::Plugin::FinderCode",
@@ -393,7 +410,7 @@
       "Chris Prather <chris@prather.org>",
       "Damien Krotkine <dkrotkine@weborama.com>",
       "David Golden <dagolden@cpan.org>",
-      "Florian Ragwitz <rafl@debian.org>",
+      "Matthew Horsfall (alh) <wolfsage@gmail.com>",
       "Steffen Mueller <smueller@cpan.org>",
       "Toby Inkster <mail@tobyinkster.co.uk>"
    ]

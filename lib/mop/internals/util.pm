@@ -3,9 +3,34 @@ use v5.16;
 use warnings;
 
 use Hash::Util::FieldHash;
+use mro ();
+use Scalar::Util ();
 
-our $VERSION   = '0.01';
+our $VERSION   = '0.02';
 our $AUTHORITY = 'cpan:STEVAN';
+
+# XXX all of this OVERRIDDEN stuff really needs to go, ideally replaced by
+# lexical exports
+my %OVERRIDDEN;
+
+sub install_sub {
+    my ($to, $from, $sub) = @_;
+    no strict 'refs';
+    if (*{ "${to}::${sub}" }) {
+        push @{ $OVERRIDDEN{$to}{$sub} //= [] }, \&{ "${to}::${sub}" };
+    }
+    no warnings 'redefine';
+    *{ $to . '::' . $sub } = \&{ "${from}::${sub}" };
+}
+
+sub uninstall_sub {
+    my ($pkg, $sub) = @_;
+    no strict 'refs';
+    delete ${ $pkg . '::' }{$sub};
+    if (my $prev = pop @{ $OVERRIDDEN{$pkg}{$sub} // [] }) {
+        *{ $pkg . '::' . $sub } = $prev;
+    }
+}
 
 sub init_attribute_storage (\%) {
     &Hash::Util::FieldHash::fieldhash( $_[0] )
@@ -41,10 +66,7 @@ sub install_meta {
       . "Does your code have a circular dependency?"
         if is_nonmop_class($name);
 
-    {
-        no strict 'refs';
-        *{ $name . '::METACLASS' } = \$meta;
-    }
+    set_meta($name, $meta);
 
     $INC{ ($name =~ s{::}{/}gr) . '.pm' } //= '(mop)';
 }
@@ -326,6 +348,17 @@ sub create_composite_role {
     return $composite;
 }
 
+sub buildall {
+    my ($instance, @args) = @_;
+
+    foreach my $class (reverse @{ mro::get_linear_isa(ref $instance) }) {
+        if (my $m = mop::meta($class)) {
+            $m->get_method('BUILD')->execute($instance, [ @args ])
+                if $m->has_method('BUILD');
+        }
+    }
+}
+
 1;
 
 __END__
@@ -356,6 +389,8 @@ Stevan Little <stevan.little@iinteractive.com>
 
 Jesse Luehrs <doy@tozt.net>
 
+Florian Ragwitz <rafl@debian.org>
+
 =head1 COPYRIGHT AND LICENSE
 
 This software is copyright (c) 2013 by Infinity Interactive.
@@ -363,22 +398,6 @@ This software is copyright (c) 2013 by Infinity Interactive.
 This is free software; you can redistribute it and/or modify it under
 the same terms as the Perl 5 programming language system itself.
 
-=begin Pod::Coverage
-
-  init_attribute_storage
-  register_object
-  is_nonmop_class
-  mark_nonmop_class
-  install_meta
-  apply_all_roles
-  unapply_all_roles
-  find_or_inflate_meta
-  inflate_meta
-  fix_metaclass_compatibility
-  rebase_metaclasses
-  find_common_base
-  create_composite_role
-
-=end Pod::Coverage
+=for Pod::Coverage .+
 
 =cut

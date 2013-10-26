@@ -5,7 +5,7 @@ use warnings;
 
 use Hash::Util::FieldHash qw[ fieldhash ];
 
-our $VERSION   = '0.01';
+our $VERSION   = '0.02';
 our $AUTHORITY = 'cpan:STEVAN';
 
 fieldhash my %TRAIT_REGISTRATION;
@@ -78,6 +78,8 @@ L<Github|http://www.github.com>.
 Stevan Little <stevan.little@iinteractive.com>
 
 Jesse Luehrs <doy@tozt.net>
+
+Florian Ragwitz <rafl@debian.org>
 
 =head1 COPYRIGHT AND LICENSE
 

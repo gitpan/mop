@@ -1,17 +1,12 @@
-requires "B::Hooks::EndOfScope" => "0";
-requires "Carp" => "0";
+requires "Devel::CallParser" => "0";
 requires "Hash::Util::FieldHash" => "0";
-requires "Parse::Keyword" => "0";
 requires "Scalar::Util" => "0";
-requires "Scope::Guard" => "0";
-requires "Sub::Name" => "0";
-requires "Variable::Magic" => "0";
+requires "XSLoader" => "0";
 requires "mro" => "0";
 requires "overload" => "0";
 requires "parent" => "0";
 requires "perl" => "v5.16.0";
 requires "strict" => "0";
-requires "twigils" => "0.04";
 requires "version" => "0";
 requires "warnings" => "0";
 
@@ -27,6 +22,7 @@ on 'test' => sub {
 };
 
 on 'configure' => sub {
+  requires "Devel::CallParser" => "0";
   requires "ExtUtils::MakeMaker" => "6.30";
 };
 

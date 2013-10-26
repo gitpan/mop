@@ -3,10 +3,10 @@ package mop::traits;
 use v5.16;
 use warnings;
 
-our $VERSION   = '0.01';
+our $VERSION   = '0.02';
 our $AUTHORITY = 'cpan:STEVAN';
 
-our @AVAILABLE_TRAITS = qw[
+our @available_traits = qw[
     rw
     ro
     required
@@ -17,6 +17,20 @@ our @AVAILABLE_TRAITS = qw[
     extending_non_mop
     repr
 ];
+
+sub setup_for {
+    my ($pkg) = @_;
+
+    mop::internals::util::install_sub($pkg, 'mop::traits', $_)
+        for @available_traits;
+}
+
+sub teardown_for {
+    my ($pkg) = @_;
+
+    mop::internals::util::uninstall_sub($pkg, $_)
+        for @available_traits;
+}
 
 sub rw {
     my ($attr) = @_;
@@ -128,7 +142,7 @@ sub lazy {
         if ( !$attr->has_data_in_slot_for($instance) ) {
             $attr->store_data_in_slot_for($instance, do {
                 local $_ = $instance;
-                $default->()
+                ref($default) ? $default->() : $default
             });
         }
     });
@@ -139,8 +153,6 @@ sub extending_non_mop {
 
     die "extending_non_mop trait is only valid on classes"
         unless $class->isa('mop::class');
-
-    state $BUILDALL = mop::meta('mop::object')->get_method('BUILDALL');
 
     $constructor_name //= 'new';
     my $super_constructor = join '::' => $class->superclass, $constructor_name;
@@ -166,7 +178,8 @@ sub extending_non_mop {
                     $attr->store_default_in_slot_for( $self );
                 }
 
-                $BUILDALL->execute( $self, [ @_ ] );
+                mop::internals::util::buildall($self, @_);
+
                 $self;
             }
         )
@@ -323,12 +336,18 @@ Stevan Little <stevan.little@iinteractive.com>
 
 Jesse Luehrs <doy@tozt.net>
 
+Florian Ragwitz <rafl@debian.org>
+
 =head1 COPYRIGHT AND LICENSE
 
 This software is copyright (c) 2013 by Infinity Interactive.
 
 This is free software; you can redistribute it and/or modify it under
 the same terms as the Perl 5 programming language system itself.
+
+=for Pod::Coverage
+  setup_for
+  teardown_for
 
 =cut
 

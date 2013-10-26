@@ -7,7 +7,7 @@ use Scalar::Util qw[ refaddr ];
 
 use mop::internals::util;
 
-our $VERSION   = '0.01';
+our $VERSION   = '0.02';
 our $AUTHORITY = 'cpan:STEVAN';
 
 mop::internals::util::init_attribute_storage(my %callbacks);
@@ -45,9 +45,8 @@ sub has_events {
     return $callbacks{ $self } && !!%{ ${ $callbacks{ $self } } };
 }
 
-our $METACLASS;
-
 sub __INIT_METACLASS__ {
+    state $METACLASS;
     return $METACLASS if defined $METACLASS;
     require mop::role;
     $METACLASS = mop::role->new(
@@ -100,6 +99,8 @@ Stevan Little <stevan.little@iinteractive.com>
 
 Jesse Luehrs <doy@tozt.net>
 
+Florian Ragwitz <rafl@debian.org>
+
 =head1 COPYRIGHT AND LICENSE
 
 This software is copyright (c) 2013 by Infinity Interactive.
@@ -107,14 +108,7 @@ This software is copyright (c) 2013 by Infinity Interactive.
 This is free software; you can redistribute it and/or modify it under
 the same terms as the Perl 5 programming language system itself.
 
-=begin Pod::Coverage
-
-  bind
-  unbind
-  fire
-  has_events
-
-=end Pod::Coverage
+=for Pod::Coverage .+
 
 =cut
 

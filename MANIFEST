@@ -10,6 +10,7 @@ bench/instance_creation.pl
 bench/method_calling.pl
 cpanfile
 dist.ini
+inc/BumpVersion.pm
 inc/MakeMaker.pm
 lib/mop.pm
 lib/mop/attribute.pm
@@ -30,6 +31,8 @@ lib/mop/object.pm
 lib/mop/role.pm
 lib/mop/traits.pm
 lib/mop/traits/util.pm
+lib/op.pm
+mop.xs
 t/00-compile.t
 t/000-bootstrap.t
 t/001-examples/001-point.t
@@ -70,6 +73,7 @@ t/010-basics/031-arbitrary-abstract-classes.t
 t/010-basics/040-clone.t
 t/010-basics/041-required.t
 t/010-basics/050-dump-object.t
+t/010-basics/051-op-pm.t
 t/020-methods/001-basic.t
 t/030-roles/001-basic.t
 t/030-roles/002-compose-into-role.t
@@ -96,6 +100,7 @@ t/110-oddities/001-syntax-error.t
 t/110-oddities/002-lexical-override-attribute.t
 t/110-oddities/003-metadata-errors.t
 t/110-oddities/004-returning-lexicals.t
+t/110-oddities/005-string-eval.t
 t/110-oddities/007-sub-vs-method.t
 t/110-oddities/008-method-method.t
 t/110-oddities/009-method-method-from-disk.t
@@ -107,9 +112,11 @@ t/110-oddities/014-classes-with-namespaces.t
 t/110-oddities/015-semicolons-separate.t
 t/110-oddities/016-associated-meta.t
 t/110-oddities/017-attribute-closures.t
+t/110-oddities/018-class-block-code.t
 t/120-bugs/001-plack-parser-bug.t
 t/120-bugs/002-plack-parser-bug.t
 t/120-bugs/003-version.t
+t/120-bugs/004-autovivification.t
 t/120-bugs/010-bread-board-bug.t
 t/120-bugs/016-github.t
 t/120-bugs/070-github.t
@@ -120,6 +127,8 @@ t/150-parser-tests/004-invocant.t
 t/150-parser-tests/005-__CLASS__.t
 t/150-parser-tests/006-semicolon.t
 t/150-parser-tests/007-utf8.t
+t/150-parser-tests/008-compile-time.t
+t/150-parser-tests/009-idfirst.t
 t/150-parser-tests/010-version.t
 t/150-parser-tests/020-role-extends.t
 t/150-parser-tests/050-errors.t
@@ -129,6 +138,7 @@ t/200-meta/005-associated-class.t
 t/200-meta/006-metaclass-cloning.t
 t/200-meta/010-extension.t
 t/200-meta/011-more-extensions.t
+t/200-meta/012-default-metaclass.t
 t/200-meta/013-metaclass-traits.t
 t/200-meta/020-create-instance-w-meta.t
 t/200-meta/030-build-demolish.t
@@ -175,6 +185,8 @@ t/lib/Bar/Class1.pm
 t/lib/Bar/Class2.pm
 t/lib/Circular.pm
 t/lib/Circular/Child.pm
+t/lib/Custom/Class.pm
+t/lib/Custom/Role.pm
 t/lib/Flack/Component.pm
 t/lib/Flack/Middleware.pm
 t/lib/Flack/Middleware/AccessLog.pm
