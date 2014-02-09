@@ -3,7 +3,9 @@ package mop::traits;
 use v5.16;
 use warnings;
 
-our $VERSION   = '0.02';
+use Scalar::Util 'blessed', 'weaken';
+
+our $VERSION   = '0.03';
 our $AUTHORITY = 'cpan:STEVAN';
 
 our @available_traits = qw[
@@ -17,6 +19,8 @@ our @available_traits = qw[
     extending_non_mop
     repr
 ];
+
+require Carp;
 
 sub setup_for {
     my ($pkg) = @_;
@@ -36,16 +40,17 @@ sub rw {
     my ($attr) = @_;
 
     die "rw trait is only valid on attributes"
-        unless $attr->isa('mop::attribute');
+        unless blessed($attr) && $attr->isa('mop::attribute');
 
     my $meta = $attr->associated_meta;
+    weaken(my $weak_attr = $attr);
     $meta->add_method(
         $meta->method_class->new(
             name => $attr->key_name,
             body => sub {
                 my $self = shift;
-                $attr->store_data_in_slot_for($self, shift) if @_;
-                $attr->fetch_data_in_slot_for($self);
+                $weak_attr->store_data_in_slot_for($self, shift) if @_;
+                $weak_attr->fetch_data_in_slot_for($self);
             }
         )
     );
@@ -55,16 +60,17 @@ sub ro {
     my ($attr) = @_;
 
     die "ro trait is only valid on attributes"
-        unless $attr->isa('mop::attribute');
+        unless blessed($attr) && $attr->isa('mop::attribute');
 
     my $meta = $attr->associated_meta;
+    weaken(my $weak_attr = $attr);
     $meta->add_method(
         $meta->method_class->new(
             name => $attr->key_name,
             body => sub {
                 my $self = shift;
                 die "Cannot assign to a read-only accessor" if @_;
-                $attr->fetch_data_in_slot_for($self);
+                $weak_attr->fetch_data_in_slot_for($self);
             }
         )
     );
@@ -74,20 +80,23 @@ sub required {
     my ($attr) = @_;
 
     die "required trait is only valid on attributes"
-        unless $attr->isa('mop::attribute');
+        unless blessed($attr) && $attr->isa('mop::attribute');
 
     die "in '" . $attr->name . "' attribute definition: "
       . "'required' trait is incompatible with default value"
         if $attr->has_default;
 
-    $attr->set_default(sub { die "'" . $attr->name . "' is required" });
+    weaken(my $weak_attr = $attr);
+    $attr->set_default(sub {
+        Carp::croak("'" . $weak_attr->name . "' is required")
+    });
 }
 
 sub abstract {
     my ($class) = @_;
 
     die "abstract trait is only valid on classes"
-        unless $class->isa('mop::class');
+        unless blessed($class) && $class->isa('mop::class');
 
     $class->make_class_abstract;
 }
@@ -96,7 +105,7 @@ sub overload {
     my ($method, $operator) = @_;
 
     die "overload trait is only valid on methods"
-        unless $method->isa('mop::method');
+        unless blessed($method) && $method->isa('mop::method');
 
     my $method_name = $method->name;
 
@@ -122,11 +131,12 @@ sub weak_ref {
     my ($attr) = @_;
 
     die "weak_ref trait is only valid on attributes"
-        unless $attr->isa('mop::attribute');
+        unless blessed($attr) && $attr->isa('mop::attribute');
 
+    weaken(my $weak_attr = $attr);
     $attr->bind('after:STORE_DATA' => sub {
         my (undef, $instance) = @_;
-        $attr->weaken_data_in_slot_for($instance);
+        $weak_attr->weaken_data_in_slot_for($instance);
     });
 }
 
@@ -134,13 +144,14 @@ sub lazy {
     my ($attr) = @_;
 
     die "lazy trait is only valid on attributes"
-        unless $attr->isa('mop::attribute');
+        unless blessed($attr) && $attr->isa('mop::attribute');
 
     my $default = $attr->clear_default;
+    weaken(my $weak_attr = $attr);
     $attr->bind('before:FETCH_DATA' => sub {
         my (undef, $instance) = @_;
-        if ( !$attr->has_data_in_slot_for($instance) ) {
-            $attr->store_data_in_slot_for($instance, do {
+        if ( !$weak_attr->has_data_in_slot_for($instance) ) {
+            $weak_attr->store_data_in_slot_for($instance, do {
                 local $_ = $instance;
                 ref($default) ? $default->() : $default
             });
@@ -152,7 +163,7 @@ sub extending_non_mop {
     my ($class, $constructor_name) = @_;
 
     die "extending_non_mop trait is only valid on classes"
-        unless $class->isa('mop::class');
+        unless blessed($class) && $class->isa('mop::class');
 
     $constructor_name //= 'new';
     my $super_constructor = join '::' => $class->superclass, $constructor_name;
@@ -190,7 +201,7 @@ sub repr {
     my ($class, $instance) = @_;
 
     die "repr trait is only valid on classes"
-        unless $class->isa('mop::class');
+        unless blessed($class) && $class->isa('mop::class');
 
     my $generator;
     if (ref $instance && ref $instance eq 'CODE') {
@@ -306,8 +317,8 @@ This will throw an exception if it is applied to attributes or methods.
 
 When applied to a class this will use the specified C<$ref_type>
 as the underlying instance type for all instances of the class.
-Currently supported reference types as SCALAR, ARRAY, HASH and
-GLOB, and must be passed as those literal string. If a CODE
+Currently supported reference types are SCALAR, ARRAY, HASH and
+GLOB, and must be passed as a string literal. If a CODE
 reference is passed, it will be directly used by the mop to
 generate new instances.
 
@@ -340,7 +351,7 @@ Florian Ragwitz <rafl@debian.org>
 
 =head1 COPYRIGHT AND LICENSE
 
-This software is copyright (c) 2013 by Infinity Interactive.
+This software is copyright (c) 2013-2014 by Infinity Interactive.
 
 This is free software; you can redistribute it and/or modify it under
 the same terms as the Perl 5 programming language system itself.

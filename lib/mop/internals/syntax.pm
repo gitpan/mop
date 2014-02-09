@@ -6,7 +6,7 @@ use warnings;
 use version           ();
 use Devel::CallParser ();
 
-our $VERSION   = '0.02';
+our $VERSION   = '0.03';
 our $AUTHORITY = 'cpan:STEVAN';
 
 my @available_keywords = qw(class role method has);
@@ -107,6 +107,26 @@ sub add_attribute {
     return;
 }
 
+# B::Deparse doesn't know what to do with custom ops
+{
+    package
+        B::Deparse;
+    sub pp_init_attr {
+        # XXX not sure why this doesn't work
+        # "(init_attr " . maybe_targmy(@_, \&listop) . ")";
+        my $self = shift;
+        my ($op) = @_;
+        my $targ = $self->padname($op->targ);
+        return "(init_attr " . $targ . ": "
+            . join(', ', map { $self->deparse($_) }
+                             $op->first,
+                             $op->first->sibling,
+                             $op->first->sibling->sibling)
+            . ")";
+    }
+    sub pp_intro_invocant { "(intro invocant)" }
+}
+
 1;
 
 __END__
@@ -141,7 +161,7 @@ Florian Ragwitz <rafl@debian.org>
 
 =head1 COPYRIGHT AND LICENSE
 
-This software is copyright (c) 2013 by Infinity Interactive.
+This software is copyright (c) 2013-2014 by Infinity Interactive.
 
 This is free software; you can redistribute it and/or modify it under
 the same terms as the Perl 5 programming language system itself.

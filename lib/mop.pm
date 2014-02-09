@@ -7,7 +7,7 @@ use warnings;
 use overload ();
 use Scalar::Util ();
 
-our $VERSION   = '0.02';
+our $VERSION   = '0.03';
 our $AUTHORITY = 'cpan:STEVAN';
 
 our $BOOTSTRAPPED = 0;
@@ -27,6 +27,21 @@ use mop::internals::util;
 
 use mop::traits;
 use mop::traits::util;
+
+$Carp::Internal{$_}++ for qw/
+  op
+  mop
+  mop::attribute
+  mop::class
+  mop::internals::observable
+  mop::internals::syntax
+  mop::internals::util
+  mop::method
+  mop::object
+  mop::role
+  mop::traits
+  mop::traits::util
+  /;
 
 sub import {
     shift;
@@ -78,6 +93,31 @@ sub apply_metaclass {
     # replacement in those methods, to make sure bootstrapping isn't doing
     # unnecessary extra work. the actual implementation is replaced below.
     return;
+}
+
+sub apply_metarole {
+    my ($instance, $new_metarole) = @_;
+
+    my $meta      = mop::meta($instance);
+    my $meta_name = Scalar::Util::blessed($meta);
+    my $role_name = Scalar::Util::blessed($new_metarole) // $new_metarole;
+    my $metarole  = mop::meta($role_name);
+
+    die "Could not find metaclass for role: $_"
+        unless $metarole;
+
+    my $new_meta_name = "mop::metarole::${meta_name}::${role_name}";
+    my $new_meta;
+    if (!($new_meta = mop::meta($new_meta_name))) {
+        $new_meta = $meta_name->new(
+            name       => $new_meta_name,
+            superclass => $meta->name,
+            roles      => [$metarole],
+        );
+        $new_meta->FINALIZE;
+    }
+
+    apply_metaclass($instance, $new_meta->name);
 }
 
 sub rebless {
@@ -157,7 +197,7 @@ sub dump_object {
                 } else {
                     return $data;
                 }
-            }->( $attr->fetch_data_in_slot_for( $obj ) );
+            }->(${ $attr->get_slot_for($obj) });
         }
     }
 
@@ -283,13 +323,6 @@ sub initialize {
     $BOOTSTRAPPED = 1;
 }
 
-# B::Deparse doesn't know what to do with custom ops
-{
-    package
-        B::Deparse;
-    sub pp_init_attr { "INIT_ATTR " . maybe_targmy(@_, \&unop) }
-}
-
 1;
 
 __END__
@@ -302,7 +335,7 @@ mop - A new object system for Perl 5
 
 =head1 VERSION
 
-version 0.02
+version 0.03
 
 =head1 SYNOPSIS
 
@@ -326,6 +359,11 @@ version 0.02
         }
     }
 
+    my $p = Point3D->new(x => 4, y => 2, z => 8);
+
+    # "x: 4, y: 2, z: 8"
+    printf("x: %d, y: %d, z: %d\n", $p->x, $p->y, $p->z);
+
 =head1 STATEMENT OF INTENT
 
 This is a prototype for a new object system for Perl 5, it is our
@@ -333,7 +371,7 @@ intent to try and get this into the core of Perl 5. This is being
 released to CPAN so that the community at large can test it out
 and provide feedback.
 
-It can B<not> be overstated that this is a 0.01 prototype, which
+It can B<not> be overstated that this is an early prototype, which
 means that nothing here is final and everything could change.
 That said we are quite happy with the current state and after
 several months of working with it, feel that it is solid enough
@@ -494,6 +532,13 @@ Given an instance and a class name, this will perform all
 the necessary metaclass compatibility checks and then
 rebless the instance accordingly.
 
+=head2 apply_metarole($obj, $metarole_name_or_instance)
+
+Given an instance and a role name, this creates a new
+metaclass which extends C<$obj>'s metaclass and does the
+given role, and then calls C<apply_metaclass> on C<$obj> and
+the new class.
+
 =head2 rebless($obj, $class_name)
 
 Given an instance and a class name, this will handle
@@ -530,7 +575,7 @@ Florian Ragwitz <rafl@debian.org>
 
 =head1 COPYRIGHT AND LICENSE
 
-This software is copyright (c) 2013 by Infinity Interactive.
+This software is copyright (c) 2013-2014 by Infinity Interactive.
 
 This is free software; you can redistribute it and/or modify it under
 the same terms as the Perl 5 programming language system itself.

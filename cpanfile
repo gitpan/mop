@@ -1,3 +1,4 @@
+requires "Carp" => "0";
 requires "Devel::CallParser" => "0";
 requires "Hash::Util::FieldHash" => "0";
 requires "Scalar::Util" => "0";
@@ -11,12 +12,14 @@ requires "version" => "0";
 requires "warnings" => "0";
 
 on 'test' => sub {
+  requires "B" => "0";
   requires "B::Deparse" => "0";
-  requires "Capture::Tiny" => "0";
+  requires "File::Spec" => "0";
   requires "FindBin" => "0";
   requires "IO::Handle" => "0";
+  requires "IPC::Open3" => "0";
+  requires "JSON::PP" => "0";
   requires "Test::More" => "0.88";
-  requires "blib" => "0";
   requires "if" => "0";
   requires "lib" => "0";
 };
@@ -34,7 +37,10 @@ on 'develop' => sub {
   requires "Path::Class" => "0";
   requires "Pod::Coverage::TrustPod" => "0";
   requires "Test::EOL" => "0";
+  requires "Test::More" => "0";
   requires "Test::NoTabs" => "0";
   requires "Test::Pod" => "1.41";
   requires "Test::Pod::Coverage" => "1.08";
+  requires "Type::Tiny" => "0";
+  requires "autovivification" => "0";
 };

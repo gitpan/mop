@@ -5,46 +5,286 @@
 
 #include "callparser1.h"
 
+#ifdef DEBUGGING
+#  define ASSERT_NRETVAL(n, e) assert((n) == (e))
+#else
+#  define ASSERT_NRETVAL(n, e) (e)
+#endif
+
 /* subname magic {{{ */
 
 static MGVTBL subname_vtbl;
 
 /* }}} */
+/* metaclass magic {{{ */
+
+static MGVTBL meta_vtbl;
+
+#define set_meta_magic(meta, name) THX_set_meta_magic(aTHX_ meta, name)
+static void
+THX_set_meta_magic(pTHX_ SV *meta, SV *name)
+{
+    MAGIC *mg;
+
+    assert(sv_isobject(meta));
+    assert(name && SvPOK(name));
+
+    mg = mg_findext(SvRV(meta), PERL_MAGIC_ext, &meta_vtbl);
+    if (mg) {
+        assert(!sv_cmp(name, mg->mg_obj));
+        return;
+    }
+
+    sv_magicext(SvRV(meta), name, PERL_MAGIC_ext, &meta_vtbl, "metaclass", 0);
+}
+
+#define get_meta_name(meta) THX_get_meta_name(aTHX_ meta)
+static SV *
+THX_get_meta_name(pTHX_ SV *meta)
+{
+    MAGIC *mg;
+
+    assert(sv_isobject(meta));
+
+    mg = mg_findext(SvRV(meta), PERL_MAGIC_ext, &meta_vtbl);
+    assert(mg);
+
+    return mg->mg_obj;
+}
+
+#define get_attr_generation(meta) THX_get_attr_generation(aTHX_ meta)
+static U16
+THX_get_attr_generation(pTHX_ SV *meta)
+{
+    MAGIC *mg;
+
+    assert(sv_isobject(meta));
+
+    mg = mg_findext(SvRV(meta), PERL_MAGIC_ext, &meta_vtbl);
+    assert(mg);
+
+    return mg->mg_private;
+}
+
+#define incr_attr_generation(meta) THX_incr_attr_generation(aTHX_ meta)
+static void
+THX_incr_attr_generation(pTHX_ SV *meta)
+{
+    MAGIC *mg;
+
+    assert(sv_isobject(meta));
+
+    mg = mg_findext(SvRV(meta), PERL_MAGIC_ext, &meta_vtbl);
+    assert(mg);
+
+    mg->mg_private++;
+}
+
+/* }}} */
+/* stash magic {{{ */
+
+static MGVTBL meta_vtbl;
+
+#define get_meta(name) THX_get_meta(aTHX_ name)
+static SV *
+THX_get_meta(pTHX_ SV *name)
+{
+    MAGIC *mg = NULL;
+    HV *stash;
+
+    assert(name && SvPOK(name));
+
+    stash = gv_stashsv(name, 0);
+
+    if (stash) {
+        mg = mg_findext((SV *)stash, PERL_MAGIC_ext, &meta_vtbl);
+    }
+
+    return mg ? mg->mg_obj : &PL_sv_undef;
+}
+
+#define set_meta(name, meta) THX_set_meta(aTHX_ name, meta)
+static void
+THX_set_meta(pTHX_ SV *name, SV *meta)
+{
+    HV *stash;
+
+    assert(name && SvPOK(name));
+    assert(sv_isobject(meta));
+
+    stash = gv_stashsv(name, GV_ADD);
+    assert(stash);
+    sv_magicext((SV *)stash, meta, PERL_MAGIC_ext, &meta_vtbl, "meta", 0);
+}
+
+#define unset_meta(name) THX_unset_meta(aTHX_ name)
+static void
+THX_unset_meta(pTHX_ SV *name)
+{
+    HV *stash;
+
+    assert(name && SvPOK(name));
+
+    stash = gv_stashsv(name, GV_ADD);
+    assert(stash);
+    sv_unmagicext((SV *)stash, PERL_MAGIC_ext, &meta_vtbl);
+}
+
+/* }}} */
 /* attribute magic {{{ */
+
+static MGVTBL slot_vtbl;
+
+#define slot_is_cacheable(attr) THX_slot_is_cacheable(aTHX_ attr)
+static bool
+THX_slot_is_cacheable(pTHX_ SV *attr)
+{
+    dSP;
+    SV *ret;
+
+    assert(sv_isobject(attr));
+
+    ENTER;
+
+    PUSHMARK(SP);
+    XPUSHs(attr);
+    PUTBACK;
+    ASSERT_NRETVAL(1, call_method("has_events", G_SCALAR));
+    SPAGAIN;
+    ret = POPs;
+    PUTBACK;
+
+    LEAVE;
+
+    return !SvTRUE(ret);
+}
+
+#define get_slot_for(meta, attr_name, self, attrp) \
+    THX_get_slot_for(aTHX_ meta, attr_name, self, attrp)
+static SV *
+THX_get_slot_for(pTHX_ SV *meta, SV *attr_name, SV *self, SV **attrp)
+{
+    U16 generation;
+    MAGIC *mg;
+    SV *key, *attr;
+    HV *slots;
+    HE *slot_ent;
+
+    assert(sv_isobject(meta));
+    assert(attr_name && SvPOK(attr_name));
+    assert(sv_isobject(self));
+    assert(attrp);
+
+    generation = get_attr_generation(meta);
+
+    mg = mg_findext(SvRV(self), PERL_MAGIC_ext, &slot_vtbl);
+    if (mg && mg->mg_private != generation) {
+        sv_unmagicext(SvRV(self), PERL_MAGIC_ext, &slot_vtbl);
+        mg = NULL;
+    }
+
+    if (mg) {
+        slots = (HV *)mg->mg_obj;
+        assert(slots);
+    }
+    else {
+        slots = newHV();
+        mg = sv_magicext(SvRV(self), (SV *)slots, PERL_MAGIC_ext,
+                         &slot_vtbl, "slot", 0);
+        mg->mg_private = generation;
+    }
+
+    key = newSVpvf("%"SVf"::%"SVf, get_meta_name(meta), attr_name);
+
+    slot_ent = hv_fetch_ent(slots, key, 0, 0);
+
+    if (slot_ent) {
+        return HeVAL(slot_ent);
+    }
+    else {
+        dSP;
+
+        ENTER;
+        PUSHMARK(SP);
+        XPUSHs(meta);
+        XPUSHs(attr_name);
+        PUTBACK;
+        ASSERT_NRETVAL(1, call_method("get_attribute", G_SCALAR));
+        SPAGAIN;
+        attr = POPs;
+        assert(sv_isobject(attr));
+        PUTBACK;
+        LEAVE;
+
+        *attrp = attr;
+
+        if (slot_is_cacheable(attr)) {
+            SV *slot, *slotp;
+
+            ENTER;
+            PUSHMARK(SP);
+            XPUSHs(attr);
+            XPUSHs(self);
+            PUTBACK;
+            ASSERT_NRETVAL(1, call_method("get_slot_for", G_SCALAR));
+            SPAGAIN;
+            slotp = POPs;
+            assert(SvROK(slotp));
+            PUTBACK;
+            LEAVE;
+
+            slot = SvRV(slotp);
+            (void)hv_store_ent(slots, key, slot, 0);
+
+            return slot;
+        }
+        else {
+            return NULL;
+        }
+    }
+}
 
 static int
 mg_attr_get(pTHX_ SV *sv, MAGIC *mg)
 {
-    dSP;
-    SV *name, *meta, *self, *attr, *val;
+    SV **namep, **metap, **selfp;
+    SV *name, *meta, *self, *slot, *attr;
 
-    name = *av_fetch((AV *)mg->mg_obj, 0, 0);
-    meta = *av_fetch((AV *)mg->mg_obj, 1, 0);
-    self = *av_fetch((AV *)mg->mg_obj, 2, 0);
+    assert(SvTYPE(mg->mg_obj) == SVt_PVAV);
 
-    ENTER;
-    PUSHMARK(SP);
-    XPUSHs(meta);
-    XPUSHs(name);
-    PUTBACK;
-    call_method("get_attribute", G_SCALAR);
-    SPAGAIN;
-    attr = POPs;
-    PUTBACK;
-    LEAVE;
+    namep = av_fetch((AV *)mg->mg_obj, 0, 0);
+    metap = av_fetch((AV *)mg->mg_obj, 1, 0);
+    selfp = av_fetch((AV *)mg->mg_obj, 2, 0);
 
-    ENTER;
-    PUSHMARK(SP);
-    XPUSHs(attr);
-    XPUSHs(self);
-    PUTBACK;
-    call_method("fetch_data_in_slot_for", G_SCALAR);
-    SPAGAIN;
-    val = POPs;
-    PUTBACK;
-    LEAVE;
+    assert(namep);
+    assert(metap);
+    assert(selfp);
 
-    sv_setsv(sv, val);
+    name = *namep;
+    meta = *metap;
+    self = *selfp;
+
+    assert(name && SvPOK(name));
+    assert(sv_isobject(meta));
+    assert(sv_isobject(self));
+
+    slot = get_slot_for(meta, name, self, &attr);
+    if (!slot) {
+        dSP;
+
+        ENTER;
+        PUSHMARK(SP);
+        XPUSHs(attr);
+        XPUSHs(self);
+        PUTBACK;
+        ASSERT_NRETVAL(1, call_method("fetch_data_in_slot_for", G_SCALAR));
+        SPAGAIN;
+        slot = POPs;
+        PUTBACK;
+        LEAVE;
+    }
+
+    sv_setsv(sv, slot);
 
     return 0;
 }
@@ -52,32 +292,43 @@ mg_attr_get(pTHX_ SV *sv, MAGIC *mg)
 static int
 mg_attr_set(pTHX_ SV *sv, MAGIC *mg)
 {
-    dSP;
-    SV *name, *meta, *self, *attr;
+    SV **namep, **metap, **selfp;
+    SV *name, *meta, *self, *slot, *attr;
 
-    name = *av_fetch((AV *)mg->mg_obj, 0, 0);
-    meta = *av_fetch((AV *)mg->mg_obj, 1, 0);
-    self = *av_fetch((AV *)mg->mg_obj, 2, 0);
+    assert(SvTYPE(mg->mg_obj) == SVt_PVAV);
 
-    ENTER;
-    PUSHMARK(SP);
-    XPUSHs(meta);
-    XPUSHs(name);
-    PUTBACK;
-    call_method("get_attribute", G_SCALAR);
-    SPAGAIN;
-    attr = POPs;
-    PUTBACK;
-    LEAVE;
+    namep = av_fetch((AV *)mg->mg_obj, 0, 0);
+    metap = av_fetch((AV *)mg->mg_obj, 1, 0);
+    selfp = av_fetch((AV *)mg->mg_obj, 2, 0);
 
-    ENTER;
-    PUSHMARK(SP);
-    XPUSHs(attr);
-    XPUSHs(self);
-    XPUSHs(sv);
-    PUTBACK;
-    call_method("store_data_in_slot_for", G_VOID);
-    LEAVE;
+    assert(namep);
+    assert(metap);
+    assert(selfp);
+
+    name = *namep;
+    meta = *metap;
+    self = *selfp;
+
+    assert(name && SvPOK(name));
+    assert(sv_isobject(meta));
+    assert(sv_isobject(self));
+
+    slot = get_slot_for(meta, name, self, &attr);
+    if (slot) {
+        sv_setsv(slot, sv);
+    }
+    else {
+        dSP;
+
+        ENTER;
+        PUSHMARK(SP);
+        XPUSHs(attr);
+        XPUSHs(self);
+        XPUSHs(sv);
+        PUTBACK;
+        ASSERT_NRETVAL(0, call_method("store_data_in_slot_for", G_VOID));
+        LEAVE;
+    }
 
     return 0;
 }
@@ -86,6 +337,9 @@ static int
 mg_err_get(pTHX_ SV *sv, MAGIC *mg)
 {
     PERL_UNUSED_ARG(sv);
+
+    assert(mg->mg_obj && SvPOK(mg->mg_obj));
+
     croak("Cannot access the attribute:(%"SVf") in a method "
           "without a blessed invocant", SVfARG(mg->mg_obj));
 }
@@ -94,6 +348,9 @@ static int
 mg_err_set(pTHX_ SV *sv, MAGIC *mg)
 {
     PERL_UNUSED_ARG(sv);
+
+    assert(mg->mg_obj && SvPOK(mg->mg_obj));
+
     croak("Cannot assign to the attribute:(%"SVf") in a method "
           "without a blessed invocant", SVfARG(mg->mg_obj));
 }
@@ -140,47 +397,6 @@ THX_set_err_magic(pTHX_ SV *var, SV *name)
 }
 
 /* }}} */
-/* stash magic {{{ */
-
-static MGVTBL meta_vtbl;
-
-#define get_meta(name) THX_get_meta(aTHX_ name)
-static SV *
-THX_get_meta(pTHX_ SV *name)
-{
-    MAGIC *mg = NULL;
-    HV *stash;
-
-    stash = gv_stashsv(name, 0);
-
-    if (stash) {
-        mg = mg_findext((SV *)stash, PERL_MAGIC_ext, &meta_vtbl);
-    }
-
-    return mg ? mg->mg_obj : &PL_sv_undef;
-}
-
-#define set_meta(name, meta) THX_set_meta(aTHX_ name, meta)
-static void
-THX_set_meta(pTHX_ SV *name, SV *meta)
-{
-    HV *stash;
-
-    stash = gv_stashsv(name, GV_ADD);
-    sv_magicext((SV *)stash, meta, PERL_MAGIC_ext, &meta_vtbl, "meta", 0);
-}
-
-#define unset_meta(name) THX_unset_meta(aTHX_ name)
-static void
-THX_unset_meta(pTHX_ SV *name)
-{
-    HV *stash;
-
-    stash = gv_stashsv(name, GV_ADD);
-    sv_unmagicext((SV *)stash, PERL_MAGIC_ext, &meta_vtbl);
-}
-
-/* }}} */
 /* version helpers {{{ */
 
 /* modified from prescan_version in core. prescan_version assumes that the
@@ -191,6 +407,8 @@ STRLEN
 THX_peek_version(pTHX_ const char *s, const char **errstr)
 {
     const char *d = s;
+
+    assert(s);
 
     if (*d == 'v') { /* explicit v-string */
         d++;
@@ -312,15 +530,18 @@ parse_version(const char *buf, STRLEN len)
     dSP;
     SV *v;
 
+    assert(buf);
+
     ENTER;
 
     PUSHMARK(SP);
     XPUSHs(sv_2mortal(newSVpvs("version")));
     XPUSHs(sv_2mortal(newSVpvn(buf, len)));
     PUTBACK;
-    call_method("parse", G_SCALAR);
+    ASSERT_NRETVAL(1, call_method("parse", G_SCALAR));
     SPAGAIN;
     v = POPs;
+    assert(sv_isobject(v));
     PUTBACK;
 
     LEAVE;
@@ -364,7 +585,7 @@ inline bool is_uni_idcont(pTHX_ UV c) {
 #endif
 #ifndef isIDCONT_A
 /* not ideal, but it's just for backcompat anyway */
-#define isIDCONT_A(uv) isIDCONT_uni(uv)
+#define isIDCONT_A(uv) ((uv) < 128 && isIDCONT_uni(uv))
 #endif
 
 #define lex_peek_sv(len) THX_lex_peek_sv(aTHX_ len)
@@ -429,11 +650,8 @@ THX_read_tokenish(pTHX)
     SvCUR_set(ret, 0);
     SvPOK_on(ret);
 
-    if (strchr("$@%!:", lex_peek_unichar(LEX_KEEP_PREVIOUS)) != NULL)
-        sv_catpvf(ret, "%c", lex_read_unichar(LEX_KEEP_PREVIOUS));
-
     c = lex_peek_unichar(LEX_KEEP_PREVIOUS);
-    while (c != -1 && !isSPACE(c)) {
+    while (c != -1 && (isWORDCHAR(c) || strchr("$@%!:\"'", c))) {
         sv_catpvf(ret, "%c", lex_read_unichar(LEX_KEEP_PREVIOUS));
         c = lex_peek_unichar(LEX_KEEP_PREVIOUS);
     }
@@ -441,7 +659,34 @@ THX_read_tokenish(pTHX)
     return ret;
 }
 
+/* if we're currently parsing a string (for instance, if we're reading a
+ * variable name that's being interpolated), we can't read the next chunk at
+ * all, because it'll read the next real chunk into the sublex buffer */
+#define lex_peek_unichar_safe(no_read) THX_lex_peek_unichar_safe(aTHX_ no_read)
+static I32
+THX_lex_peek_unichar_safe(pTHX_ bool no_read)
+{
+    return (no_read && (PL_parser->bufptr == PL_parser->bufend))
+        ? -1
+        : lex_peek_unichar(LEX_KEEP_PREVIOUS);
+}
+
+#define lex_read_unichar_safe(no_read) THX_lex_read_unichar_safe(aTHX_ no_read)
+static I32
+THX_lex_read_unichar_safe(pTHX_ bool no_read)
+{
+    if (no_read && (PL_parser->bufptr == PL_parser->bufend)) {
+        return -1;
+    }
+    else {
+        lex_read_unichar(LEX_KEEP_PREVIOUS);
+        return lex_peek_unichar_safe(no_read);
+    }
+}
+
 #define PARSE_NAME_ALLOW_PACKAGE 1
+#define PARSE_NAME_NO_READ       2
+#define PARSE_NAME_NO_CROAK      4
 #define parse_name_prefix(prefix, prefixlen, what, whatlen, flags) THX_parse_name_prefix(aTHX_ prefix, prefixlen, what, whatlen, flags)
 static SV *
 THX_parse_name_prefix(pTHX_ const char *prefix, STRLEN prefixlen,
@@ -449,23 +694,22 @@ THX_parse_name_prefix(pTHX_ const char *prefix, STRLEN prefixlen,
 {
     STRLEN len = 0;
     SV *sv;
-    bool in_fqname = FALSE;
+    bool in_fqname = FALSE, no_read = flags & PARSE_NAME_NO_READ;
 
-    if (flags & ~PARSE_NAME_ALLOW_PACKAGE)
-        croak("unknown flags");
+    assert(what);
+    assert(!(flags & ~(PARSE_NAME_ALLOW_PACKAGE | PARSE_NAME_NO_READ | PARSE_NAME_NO_CROAK)));
 
     for (;;) {
         UV c;
 
         /* XXX why does lex_peek_unichar return an I32? */
-        c = (UV)lex_peek_unichar(LEX_KEEP_PREVIOUS);
+        c = (UV)lex_peek_unichar_safe(no_read);
 
         if (lex_bufutf8()) {
             if (in_fqname ? isIDCONT_uni(c) : isIDFIRST_uni(c)) {
                 do {
                     len += OFFUNISKIP(c);
-                    lex_read_unichar(LEX_KEEP_PREVIOUS);
-                    c = (UV)lex_peek_unichar(LEX_KEEP_PREVIOUS);
+                    c = (UV)lex_read_unichar_safe(no_read);
                 } while (isIDCONT_uni(c));
             }
         }
@@ -473,8 +717,7 @@ THX_parse_name_prefix(pTHX_ const char *prefix, STRLEN prefixlen,
             if (in_fqname ? isIDCONT_A((U8)c) : isIDFIRST_A((U8)c)) {
                 do {
                     ++len;
-                    lex_read_unichar(LEX_KEEP_PREVIOUS);
-                    c = (UV)lex_peek_unichar(LEX_KEEP_PREVIOUS);
+                    c = (UV)lex_read_unichar_safe(no_read);
                 } while (isIDCONT_A((U8)c));
             }
         }
@@ -482,12 +725,10 @@ THX_parse_name_prefix(pTHX_ const char *prefix, STRLEN prefixlen,
         if ((flags & PARSE_NAME_ALLOW_PACKAGE) && c == ':') {
             in_fqname = TRUE;
             ++len;
-            lex_read_unichar(LEX_KEEP_PREVIOUS);
-            c = (UV)lex_peek_unichar(LEX_KEEP_PREVIOUS);
+            c = (UV)lex_read_unichar_safe(no_read);
             if (c == ':') {
                 ++len;
-                lex_read_unichar(LEX_KEEP_PREVIOUS);
-                c = (UV)lex_peek_unichar(LEX_KEEP_PREVIOUS);
+                c = (UV)lex_read_unichar_safe(no_read);
             }
             else {
                 SV *buf;
@@ -502,9 +743,23 @@ THX_parse_name_prefix(pTHX_ const char *prefix, STRLEN prefixlen,
             break;
     }
 
-    if (!len)
-        croak("%"SVf" is not a valid %.*s name",
-              SVfARG(read_tokenish()), whatlen, what);
+    if (!len) {
+        if (flags & PARSE_NAME_NO_CROAK) {
+            return NULL;
+        }
+        else {
+            SV *name;
+
+            name = read_tokenish();
+
+            if (prefixlen || SvCUR(name))
+                croak("%.*s%"SVf" is not a valid %.*s name",
+                      prefixlen, prefix, SVfARG(name), (int)whatlen, what);
+            else
+                croak("No %.*s name found", (int)whatlen, what);
+        }
+    }
+
     sv = sv_2mortal(newSV(prefixlen + len));
     Copy(prefix, SvPVX(sv), prefixlen, char);
     Copy(PL_parser->bufptr - len, SvPVX(sv) + prefixlen, len, char);
@@ -531,6 +786,8 @@ THX_parse_name(pTHX_ const char *what, STRLEN whatlen, U32 flags)
 static void
 THX_syntax_error(pTHX_ SV *err)
 {
+    assert(err);
+
     if (!SvOK(err))
         err = ERRSV;
 
@@ -565,18 +822,18 @@ THX_current_attributes(pTHX)
 {
     dSP;
     AV *ret;
-    int nret, i;
+    int nattrs, i;
 
     ENTER;
     PUSHMARK(SP);
     XPUSHs(get_sv("mop::internals::syntax::CURRENT_META", 0));
     PUTBACK;
-    nret = call_method("attributes", G_ARRAY);
+    nattrs = call_method("attributes", G_ARRAY);
     SPAGAIN;
     ret = newAV();
-    av_extend(ret, nret);
-    for (i = 0; i < nret; ++i) {
-        SV *attr;
+    av_extend(ret, nattrs);
+    for (i = 0; i < nattrs; ++i) {
+        SV *attr, *attr_name;
 
         attr = POPs;
         PUTBACK;
@@ -584,9 +841,11 @@ THX_current_attributes(pTHX)
         PUSHMARK(SP);
         XPUSHs(attr);
         PUTBACK;
-        call_method("name", G_SCALAR);
+        ASSERT_NRETVAL(1, call_method("name", G_SCALAR));
         SPAGAIN;
-        av_push(ret, POPs);
+        attr_name = POPs;
+        assert(attr_name && SvPOK(attr_name));
+        av_push(ret, attr_name);
         PUTBACK;
     }
     LEAVE;
@@ -600,10 +859,16 @@ THX_load_classes(pTHX_ AV *classes)
 {
     int i;
 
+    assert(SvTYPE((SV*)classes) == SVt_PVAV);
+
     for (i = 0; i <= av_len(classes); ++i) {
+        SV **namep;
         SV *name;
 
-        name = *av_fetch(classes, i, FALSE);
+        namep = av_fetch(classes, i, FALSE);
+        assert(namep);
+        name = *namep;
+        assert(name && SvPOK(name));
 
         if (SvOK(get_meta(name)))
             continue;
@@ -620,13 +885,16 @@ THX_isa(pTHX_ SV *sv, const char *name)
     dSP;
     SV *ret;
 
+    assert(!SvROK(sv) || sv_isobject(sv));
+    assert(name);
+
     ENTER;
 
     PUSHMARK(SP);
     XPUSHs(sv);
     XPUSHs(sv_2mortal(newSVpv(name, 0)));
     PUTBACK;
-    call_method("isa", G_SCALAR);
+    ASSERT_NRETVAL(1, call_method("isa", G_SCALAR));
     SPAGAIN;
     ret = POPs;
     PUTBACK;
@@ -637,11 +905,42 @@ THX_isa(pTHX_ SV *sv, const char *name)
 }
 
 /* }}} */
+/* invocant and attribute custom ops {{{ */
+
+static XOP intro_invocant_xop;
+
+static OP *
+pp_intro_invocant(pTHX)
+{
+    SV *invocant;
+
+    invocant = av_shift(GvAV(PL_defgv));
+    PAD_SETSV(PL_op->op_targ, invocant);
+
+    return NORMAL;
+}
+
+#define gen_intro_invocant_op() THX_gen_intro_invocant_op(aTHX)
+static OP *
+THX_gen_intro_invocant_op(pTHX)
+{
+    OP *o;
+
+    o = newOP(OP_CUSTOM, 0);
+    o->op_ppaddr = pp_intro_invocant;
+    o->op_targ = pad_add_name_pvs("(invocant)", 0, NULL, NULL);
+
+    return o;
+}
+
+/* }}} */
 /* twigils {{{ */
 
 static Perl_check_t old_rv2sv_checker;
 static SV *twigils_hint_key_sv;
 static U32 twigils_hint_key_hash;
+static HV *used_attrs;
+static bool all_attrs_used;
 
 #define intro_twigil_var(namesv) THX_intro_twigil_var(aTHX_ namesv)
 static OP *
@@ -650,40 +949,6 @@ THX_intro_twigil_var(pTHX_ SV *namesv)
     OP *o = newOP(OP_PADSV, (OPpLVAL_INTRO << 8) | OPf_MOD);
     o->op_targ = pad_add_name_sv(namesv, 0, NULL, NULL);
     return o;
-}
-
-#define parse_ident(prefix, prefixlen) THX_parse_ident(aTHX_ prefix, prefixlen)
-static SV *
-THX_parse_ident(pTHX_ const char *prefix, STRLEN prefixlen)
-{
-    STRLEN idlen;
-    char *start, *s;
-    char c;
-    SV *sv;
-
-    start = s = PL_parser->bufptr;
-    if (start > SvPVX(PL_parser->linestr) && isSPACE(*(start - 1)))
-        return NULL;
-
-    c = *s;
-    if (!isIDFIRST(c))
-        return NULL;
-
-    do {
-        c = *++s;
-    } while (isALNUM(c));
-
-    lex_read_to(s);
-
-    idlen = s - start;
-    sv = sv_2mortal(newSV(prefixlen + idlen));
-    Copy(prefix, SvPVX(sv), prefixlen, char);
-    Copy(start, SvPVX(sv) + prefixlen, idlen, char);
-    SvPVX(sv)[prefixlen + idlen] = 0;
-    SvCUR_set(sv, prefixlen + idlen);
-    SvPOK_on(sv);
-
-    return sv;
 }
 
 #define twigil_enabled() THX_twigil_enabled(aTHX)
@@ -700,7 +965,7 @@ myck_rv2sv_twigils(pTHX_ OP *o)
     OP *kid, *ret;
     SV *sv, *name;
     PADOFFSET offset;
-    char prefix[2];
+    char prefix[2], *next;
 
     if (!(o->op_flags & OPf_KIDS))
         return old_rv2sv_checker(aTHX_ o);
@@ -721,13 +986,25 @@ myck_rv2sv_twigils(pTHX_ OP *o)
 
     prefix[0] = '$';
     prefix[1] = *SvPVX(sv);
-    name = parse_ident(prefix, 2);
+    name = parse_name_prefix(prefix, 2, "attribute", sizeof("attribute"), PARSE_NAME_NO_READ | PARSE_NAME_NO_CROAK);
     if (!name)
         return old_rv2sv_checker(aTHX_ o);
+
+    /* this is gross, but this is how perl's yylex handles this too. it checks
+     * intuit_more before doing it, but intuit_more is static, so we can't. */
+    next = PL_parser->bufptr;
+    while (next != PL_parser->bufend && isSPACE(*next))
+        ++next;
+    if (*next == '[')
+        SvPVX(name)[0] = '@';
+    if (*next == '{')
+        SvPVX(name)[0] = '%';
 
     offset = pad_findmy_sv(name, 0);
     if (offset == NOT_IN_PAD)
         croak("No such twigil variable %"SVf, SVfARG(name));
+
+    (void)hv_store_ent(used_attrs, name, &PL_sv_undef, 0);
 
     ret = newOP(OP_PADSV, 0);
     ret->op_targ = offset;
@@ -828,6 +1105,7 @@ THX_parse_traits(pTHX_ UV *ntraitsp)
             trait->name = parse_name("trait", sizeof("trait") - 1,
                                      PARSE_NAME_ALLOW_PACKAGE);
 
+            lex_read_space(0);
             if (lex_peek_unichar(0) == '(') {
                 lex_read_unichar(0);
                 trait->params = newANONLIST(parse_fullexpr(0));
@@ -895,6 +1173,9 @@ THX_parse_has(pTHX)
     OP *default_value = NULL, *ret;
     struct mop_trait **traits;
 
+    if (!SvOK(get_sv("mop::internals::syntax::CURRENT_META", 0)))
+        syntax_error(sv_2mortal(newSVpvs("has must be called from within a class or role block")));
+
     lex_read_space(0);
 
     if (lex_peek_unichar(0) != '$')
@@ -952,7 +1233,15 @@ struct mop_signature_var {
     OP *default_value;
 };
 
+static Perl_check_t old_entereval_checker;
 static XOP init_attr_xop;
+
+static OP *
+myck_entereval_attrs(pTHX_ OP *o)
+{
+    all_attrs_used = TRUE;
+    return old_entereval_checker(aTHX_ o);
+}
 
 #define parse_signature(method_name, invocantp, varsp) THX_parse_signature(aTHX_ method_name, invocantp, varsp)
 static UV
@@ -1075,44 +1364,48 @@ static OP *
 pp_init_attr(pTHX)
 {
     dSP; dTARGET;
-    AV *args = (AV *)SvRV(POPs);
-    SV *attr_name = *av_fetch(args, 0, 0);
-    SV *meta_class_name = *av_fetch(args, 1, 0);
-    SV *invocant = *av_fetch(args, 2, 0);
-    SV *meta_class = get_meta(meta_class_name);
+    SV *attr_name, *meta_class_name, *invocant, *meta_class;
+
+    invocant        = POPs;
+    meta_class_name = POPs;
+    attr_name       = POPs;
+    meta_class      = get_meta(meta_class_name);
 
     if (sv_isobject(invocant))
         set_attr_magic(TARG, attr_name, meta_class, invocant);
     else
         set_err_magic(TARG, attr_name);
-    return PL_op->op_next;
+
+    RETURN;
 }
 
-#define gen_init_attr_op(attr_name, meta_name, invocant_name) \
-    THX_gen_init_attr_op(aTHX_ attr_name, meta_name, invocant_name)
+#define gen_init_attr_op(attr_name, meta_name) \
+    THX_gen_init_attr_op(aTHX_ attr_name, meta_name)
 static OP *
-THX_gen_init_attr_op(pTHX_ SV *attr_name, SV *meta_name, SV *invocant_name)
+THX_gen_init_attr_op(pTHX_ SV *attr_name, SV *meta_name)
 {
-    OP *introop, *fetchinvocantop, *initopargs;
-    UNOP *initop;
+    LISTOP *initop;
+    OP *fetchinvocantop;
 
-    introop = intro_twigil_var(attr_name);
-
-    initopargs = newSVOP(OP_CONST, 0, SvREFCNT_inc(attr_name));
-    initopargs = op_append_elem(OP_LIST, initopargs,
-                                newSVOP(OP_CONST, 0, newSVsv(meta_name)));
-    fetchinvocantop = newOP(OP_PADSV, 0);
-    fetchinvocantop->op_targ = pad_findmy_sv(invocant_name, 0);
-    initopargs = op_append_elem(OP_LIST, initopargs, fetchinvocantop);
-    NewOp(1101, initop, 1, UNOP);
+    NewOp(1101, initop, 1, LISTOP);
     initop->op_type = OP_CUSTOM;
     initop->op_ppaddr = pp_init_attr;
-    initop->op_flags = OPf_KIDS;
-    initop->op_private = 1;
-    initop->op_targ = introop->op_targ;
-    initop->op_first = newANONLIST(initopargs);
+    initop->op_targ = pad_findmy_sv(attr_name, 0);
 
-    return newLISTOP(OP_LINESEQ, 0, introop, (OP *)initop);
+    op_append_elem(OP_CUSTOM,
+        (OP *)initop,
+        newSVOP(OP_CONST, 0, SvREFCNT_inc(attr_name))
+    );
+    op_append_elem(OP_CUSTOM,
+        (OP *)initop,
+        newSVOP(OP_CONST, 0, SvREFCNT_inc(meta_name))
+    );
+
+    fetchinvocantop = newOP(OP_PADSV, 0);
+    fetchinvocantop->op_targ = pad_findmy_pvs("(invocant)", 0);
+    op_append_elem(OP_CUSTOM, (OP *)initop, fetchinvocantop);
+
+    return (OP *)initop;
 }
 
 #define parse_method() THX_parse_method(aTHX)
@@ -1122,14 +1415,16 @@ THX_parse_method(pTHX)
     SV *name, *meta_name;
     AV *attrs;
     UV numvars, numtraits, i;
-    IV j;
+    I32 j, attr_len;
     int blk_floor;
     struct mop_signature_var **vars;
     struct mop_signature_var *invocant;
     struct mop_trait **traits;
-    OP *body, *body_ref;
-    OP *unpackargsop = NULL, *attrop = NULL;
+    OP *body, *body_ref, *invocantvarop, *invocantop;
     U8 errors;
+
+    if (!SvOK(get_sv("mop::internals::syntax::CURRENT_META", 0)))
+        syntax_error(sv_2mortal(newSVpvs("method must be called from within a class or role block")));
 
     lex_read_space(0);
     name = parse_name("method", sizeof("method") - 1, 0);
@@ -1156,53 +1451,75 @@ THX_parse_method(pTHX)
 
     blk_floor = start_subparse(0, CVf_ANON);
 
-    unpackargsop = newOP(OP_PADSV, (OPpLVAL_INTRO << 8) | OPf_MOD);
-    unpackargsop->op_targ = pad_add_name_sv(invocant->name, 0, NULL, NULL);
-    unpackargsop = newSTATEOP(0, NULL,
-                              newASSIGNOP(OPf_STACKED, unpackargsop, 0,
-                                          newOP(OP_SHIFT, OPf_WANT_SCALAR | OPf_SPECIAL)));
+    body = gen_intro_invocant_op();
 
-    if (numvars) {
-        OP *lhsop = newLISTOP(OP_LIST, 0, NULL, NULL);
-        OP *defaultsops = NULL;
+    invocantvarop = newOP(OP_PADSV, (OPpLVAL_INTRO << 8) | OPf_MOD);
+    invocantvarop->op_targ = pad_add_name_sv(invocant->name, 0, NULL, NULL);
+    Safefree(invocant);
 
-        for (i = 0; i < numvars; i++) {
-            struct mop_signature_var *var = vars[i];
-            OP *o = newOP(OP_PADSV, (OPpLVAL_INTRO << 8) | OPf_MOD);
-            o->op_targ = pad_add_name_sv(var->name, 0, NULL, NULL);
-            lhsop = op_append_elem(OP_LIST, lhsop, o);
+    invocantop = newOP(OP_PADSV, 0);
+    invocantop->op_targ = body->op_targ;
 
-            if (var->default_value)
-                defaultsops = op_append_elem(OP_LINESEQ, defaultsops,
-                                             gen_default_op(o->op_targ, i,
-                                                            var->default_value));
-        }
-        Safefree(vars);
-
-        unpackargsop = op_append_elem(OP_LINESEQ, unpackargsop,
-                                      newASSIGNOP(OPf_STACKED, lhsop, 0,
-                                                  newAVREF(newGVOP(OP_GV, 0, PL_defgv))));
-        unpackargsop = op_append_elem(OP_LINESEQ, unpackargsop, defaultsops);
-    }
+    body = op_append_list(OP_LINESEQ,
+        body,
+        newSTATEOP(0, NULL,
+                   newASSIGNOP(OPf_STACKED, invocantvarop, 0, invocantop))
+    );
 
     meta_name = current_meta_name();
     attrs = current_attributes();
-    for (j = 0; j <= av_len(attrs); j++) {
+    attr_len = av_len(attrs);
+    for (j = 0; j <= attr_len; j++) {
         SV *attr_name = *av_fetch(attrs, j, 0);
 
-        attrop = op_append_list(OP_LINESEQ,
-                                attrop,
-                                gen_init_attr_op(attr_name, meta_name, invocant->name));
+        body = op_append_list(OP_LINESEQ,
+            body,
+            newSTATEOP(0, NULL, intro_twigil_var(attr_name))
+        );
+        body = op_append_list(OP_LINESEQ,
+            body,
+            gen_init_attr_op(attr_name, meta_name)
+        );
     }
-    Safefree(invocant);
 
-    /* have to do this before the parse_block call */
-    attrop = newSTATEOP(0, NULL, attrop);
+    if (numvars) {
+        OP *lhsop = newLISTOP(OP_LIST, 0, NULL, NULL);
 
-    body = parse_block(0);
-    body = op_prepend_elem(OP_LINESEQ, attrop, body);
-    if (unpackargsop)
-        body = op_prepend_elem(OP_LINESEQ, newSTATEOP(0, NULL, unpackargsop), body);
+        for (i = 0; i < numvars; ++i) {
+            struct mop_signature_var *var = vars[i];
+            OP *introop;
+
+            introop = newOP(OP_PADSV, (OPpLVAL_INTRO << 8) | OPf_MOD);
+            introop->op_targ = pad_add_name_sv(var->name, 0, NULL, NULL);
+
+            lhsop = op_append_elem(OP_LIST, lhsop, introop);
+        }
+
+        body = op_append_list(OP_LINESEQ,
+            body,
+            newSTATEOP(0, NULL,
+                       newASSIGNOP(OPf_STACKED, lhsop, 0,
+                                   newAVREF(newGVOP(OP_GV, 0, PL_defgv))))
+        );
+
+        for (i = 0; i < numvars; ++i) {
+            struct mop_signature_var *var = vars[i];
+            if (var->default_value) {
+                OP *defaultop = gen_default_op(
+                    pad_findmy_sv(var->name, 0), i, var->default_value
+                );
+                body = op_append_list(OP_LINESEQ, body, defaultop);
+            }
+        }
+    }
+    Safefree(vars);
+
+    SAVEGENERICSV(used_attrs);
+    SAVEBOOL(all_attrs_used);
+    used_attrs = newHV();
+    all_attrs_used = FALSE;
+
+    body = op_append_list(OP_LINESEQ, body, newSTATEOP(0, NULL, parse_block(0)));
 
     body_ref = newANONSUB(blk_floor, NULL, body);
 
@@ -1287,6 +1604,7 @@ THX_parse_namespace(pTHX_ bool is_class, SV **pkgp)
     const char *caller, *err = NULL;
     STRLEN versionlen, callerlen;
     OP *body, *body_ref;
+    U8 errors;
 
     lex_read_space(0);
 
@@ -1377,16 +1695,87 @@ THX_parse_namespace(pTHX_ bool is_class, SV **pkgp)
     meta_gv = gv_fetchpvs("mop::internals::syntax::CURRENT_META", 0, SVt_NULL);
     save_scalar(meta_gv);
     sv_setsv(GvSV(meta_gv), meta);
+
+    errors = PL_parser->error_count;
+
     floor = start_subparse(0, 0);
 
     body = parse_block(0);
 
-    body_ref = newANONSUB(floor, NULL, newSTATEOP(0, NULL, body));
+    body_ref = newANONSUB(floor, NULL, body);
+
+    if (PL_parser->error_count > errors)
+        syntax_error(&PL_sv_undef);
 
     return gen_traits_ops(op_append_elem(OP_LIST,
                                          newSVOP(OP_CONST, 0, meta),
                                          body_ref),
                           traits, numtraits);
+}
+
+/* }}} */
+/* custom peep {{{ */
+
+static peep_t prev_peepp;
+
+static void
+my_peep(pTHX_ OP *root)
+{
+    OP *o, *old, *start;
+    int i = 0;
+
+    if (all_attrs_used)
+        return prev_peepp(aTHX_ root);
+
+    for (o = root; o; o = o->op_next) {
+        if (o->op_ppaddr == pp_intro_invocant)
+            break;
+        /* this will be near the start of the method - we need to limit how far
+         * we search because optrees aren't actually trees, they can contain
+         * cycles */
+        /* XXX probably eventually skip over the exact ops that will be at the
+         * head of the method before the intro_invocant op, but this is more
+         * flexible for now in case we change around the optree structure */
+        if (i++ > 10)
+            break;
+    }
+
+    if (!o || o->op_ppaddr != pp_intro_invocant)
+        return prev_peepp(aTHX_ root);
+
+    old   = o->op_sibling->op_sibling;
+    start = old->op_sibling;
+
+    while (start
+        && start->op_type == OP_NEXTSTATE
+        && start->op_sibling
+        && start->op_sibling->op_type == OP_PADSV
+        && start->op_sibling->op_sibling
+        && start->op_sibling->op_sibling->op_ppaddr == pp_init_attr) {
+        OP *init_attr_op = start->op_sibling->op_sibling;
+        SV *name;
+
+        assert(cLISTOPx(init_attr_op)->op_first);
+        assert(cLISTOPx(init_attr_op)->op_first->op_type == OP_CONST);
+        name = cSVOPx(cLISTOPx(init_attr_op)->op_first)->op_sv;
+
+        if (hv_exists_ent(used_attrs, name, 0)) {
+            old = init_attr_op;
+            start = old->op_sibling;
+        }
+        else {
+            old->op_next = init_attr_op->op_sibling;
+            op_null(start);
+            op_null(start->op_sibling);
+            op_null(init_attr_op);
+            op_null(cLISTOPx(init_attr_op)->op_first);
+            op_null(cLISTOPx(init_attr_op)->op_first->op_sibling);
+            op_null(cLISTOPx(init_attr_op)->op_first->op_sibling->op_sibling);
+            start = init_attr_op->op_sibling;
+        }
+    }
+
+    return prev_peepp(aTHX_ root);
 }
 
 /* }}} */
@@ -1622,46 +2011,21 @@ void
 unset_meta (package)
     SV *package
 
+void
+set_meta_magic(meta, name)
+    SV *meta
+    SV *name
+
+void
+incr_attr_generation(meta)
+    SV *meta
+
 # }}}
 # xsubs: mop::internals::syntax {{{
 
 MODULE = mop  PACKAGE = mop::internals::syntax
 
 PROTOTYPES: DISABLE
-
-SV *
-parse_name (what, flags=0)
-    const char *what
-    U32 flags
-  C_ARGS:
-    what, SvCUR(ST(0)), flags
-  POSTCALL:
-    SvREFCNT_inc(RETVAL); /* parse_name mortalises, which is what we want when
-                             we start using it from C code */
-
-SV *
-read_tokenish ()
-  POSTCALL:
-    SvREFCNT_inc(RETVAL); /* As above. */
-
-SV *
-parse_modifier_with_single_value (modifier)
-    char *modifier
-  C_ARGS:
-    modifier, SvCUR(ST(0))
-  POSTCALL:
-    SvREFCNT_inc(RETVAL); /* As above. */
-
-void
-parse_modifier_with_multiple_values (modifier)
-    char *modifier
-  PREINIT:
-    AV *names;
-    I32 i;
-  PPCODE:
-    names = parse_modifier_with_multiple_values(modifier, SvCUR(ST(0)));
-    for (i = 0; i <= av_len(names); i++)
-        PUSHs(*av_fetch(names, i, 0));
 
 BOOT:
 {
@@ -1692,11 +2056,20 @@ BOOT:
         = SvSHARED_HASH(default_role_metaclass_hint_key_sv);
 
     wrap_op_checker(OP_RV2SV, myck_rv2sv_twigils, &old_rv2sv_checker);
+    wrap_op_checker(OP_ENTEREVAL, myck_entereval_attrs, &old_entereval_checker);
 
     XopENTRY_set(&init_attr_xop, xop_name, "init_attr");
     XopENTRY_set(&init_attr_xop, xop_desc, "attribute initialization");
-    XopENTRY_set(&init_attr_xop, xop_class, OA_UNOP);
+    XopENTRY_set(&init_attr_xop, xop_class, OA_LISTOP);
     Perl_custom_op_register(aTHX_ pp_init_attr, &init_attr_xop);
+
+    XopENTRY_set(&intro_invocant_xop, xop_name, "intro_invocant");
+    XopENTRY_set(&intro_invocant_xop, xop_desc, "invocant introduction");
+    XopENTRY_set(&intro_invocant_xop, xop_class, OA_BASEOP);
+    Perl_custom_op_register(aTHX_ pp_intro_invocant, &intro_invocant_xop);
+
+    prev_peepp = PL_peepp;
+    PL_peepp = my_peep;
 }
 
 # }}}

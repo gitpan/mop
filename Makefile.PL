@@ -24,6 +24,7 @@ my %WriteMakefileArgs = (
   "MIN_PERL_VERSION" => "5.016000",
   "NAME" => "mop",
   "PREREQ_PM" => {
+    "Carp" => 0,
     "Devel::CallParser" => 0,
     "Hash::Util::FieldHash" => 0,
     "Scalar::Util" => 0,
@@ -36,16 +37,18 @@ my %WriteMakefileArgs = (
     "warnings" => 0
   },
   "TEST_REQUIRES" => {
+    "B" => 0,
     "B::Deparse" => 0,
-    "Capture::Tiny" => 0,
+    "File::Spec" => 0,
     "FindBin" => 0,
     "IO::Handle" => 0,
+    "IPC::Open3" => 0,
+    "JSON::PP" => 0,
     "Test::More" => "0.88",
-    "blib" => 0,
     "if" => 0,
     "lib" => 0
   },
-  "VERSION" => "0.02",
+  "VERSION" => "0.03",
   "test" => {
     "TESTS" => "t/*.t t/001-examples/*.t t/010-basics/*.t t/020-methods/*.t t/030-roles/*.t t/050-non-mop-integration/*.t t/100-internals/*.t t/110-oddities/*.t t/120-bugs/*.t t/150-parser-tests/*.t t/200-meta/*.t t/300-ext/Option/*.t t/300-ext/Test-BuilderX/*.t t/400-traits/*.t"
   }
@@ -90,9 +93,12 @@ if ($ENV{RELEASE_TESTING}) {
     "Path::Class" => 0,
     "Pod::Coverage::TrustPod" => 0,
     "Test::EOL" => 0,
+    "Test::More" => 0,
     "Test::NoTabs" => 0,
     "Test::Pod" => "1.41",
-    "Test::Pod::Coverage" => "1.08"
+    "Test::Pod::Coverage" => "1.08",
+    "Type::Tiny" => 0,
+    "autovivification" => 0
   );
 
   $WriteMakefileArgs{BUILD_REQUIRES} = {

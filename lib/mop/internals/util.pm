@@ -6,7 +6,7 @@ use Hash::Util::FieldHash;
 use mro ();
 use Scalar::Util ();
 
-our $VERSION   = '0.02';
+our $VERSION   = '0.03';
 our $AUTHORITY = 'cpan:STEVAN';
 
 # XXX all of this OVERRIDDEN stuff really needs to go, ideally replaced by
@@ -68,7 +68,7 @@ sub install_meta {
 
     set_meta($name, $meta);
 
-    $INC{ ($name =~ s{::}{/}gr) . '.pm' } //= '(mop)';
+    $INC{ ($name =~ s{::}{/}gr) . '.pm' } //= '(mop)'; #'syntax highlighting sucks
 }
 
 sub apply_all_roles {
@@ -393,7 +393,7 @@ Florian Ragwitz <rafl@debian.org>
 
 =head1 COPYRIGHT AND LICENSE
 
-This software is copyright (c) 2013 by Infinity Interactive.
+This software is copyright (c) 2013-2014 by Infinity Interactive.
 
 This is free software; you can redistribute it and/or modify it under
 the same terms as the Perl 5 programming language system itself.

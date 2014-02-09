@@ -5,19 +5,21 @@ author:
   - 'Jesse Luehrs <doy@tozt.net>'
   - 'Florian Ragwitz <rafl@debian.org>'
 build_requires:
+  B: 0
   B::Deparse: 0
-  Capture::Tiny: 0
+  File::Spec: 0
   FindBin: 0
   IO::Handle: 0
+  IPC::Open3: 0
+  JSON::PP: 0
   Test::More: 0.88
-  blib: 0
   if: 0
   lib: 0
 configure_requires:
   Devel::CallParser: 0
   ExtUtils::MakeMaker: 6.30
 dynamic_config: 0
-generated_by: 'Dist::Zilla version 4.300039, CPAN::Meta::Converter version 2.120921'
+generated_by: 'Dist::Zilla version 5.012, CPAN::Meta::Converter version 2.132830'
 license: perl
 meta-spec:
   url: http://module-build.sourceforge.net/META-spec-v1.4.html
@@ -29,32 +31,33 @@ no_index:
 provides:
   mop:
     file: lib/mop.pm
-    version: 0.02
+    version: 0.03
   mop::attribute:
     file: lib/mop/attribute.pm
-    version: 0.02
+    version: 0.03
   mop::class:
     file: lib/mop/class.pm
-    version: 0.02
+    version: 0.03
   mop::method:
     file: lib/mop/method.pm
-    version: 0.02
+    version: 0.03
   mop::object:
     file: lib/mop/object.pm
-    version: 0.02
+    version: 0.03
   mop::role:
     file: lib/mop/role.pm
-    version: 0.02
+    version: 0.03
   mop::traits:
     file: lib/mop/traits.pm
-    version: 0.02
+    version: 0.03
   mop::traits::util:
     file: lib/mop/traits/util.pm
-    version: 0.02
+    version: 0.03
   op:
     file: lib/op.pm
-    version: 0.02
+    version: 0.03
 requires:
+  Carp: 0
   Devel::CallParser: 0
   Hash::Util::FieldHash: 0
   Scalar::Util: 0
@@ -70,7 +73,7 @@ resources:
   bugtracker: https://github.com/stevan/p5-mop-redux/issues
   homepage: http://metacpan.org/release/mop
   repository: git://github.com/stevan/p5-mop-redux.git
-version: 0.02
+version: 0.03
 x_Dist_Zilla:
   perl:
     version: 5.018000
@@ -78,7 +81,7 @@ x_Dist_Zilla:
     -
       class: Dist::Zilla::Plugin::FileFinder::Filter
       name: PPIHack
-      version: 4.300039
+      version: 5.012
     -
       class: Dist::Zilla::Plugin::Prereqs
       config:
@@ -86,27 +89,27 @@ x_Dist_Zilla:
           phase: test
           type: requires
       name: '@Filter/TestMoreDoneTesting'
-      version: 4.300039
+      version: 5.012
     -
       class: Dist::Zilla::Plugin::GatherDir
       name: '@Filter/GatherDir'
-      version: 4.300039
+      version: 5.012
     -
       class: Dist::Zilla::Plugin::PruneCruft
       name: '@Filter/PruneCruft'
-      version: 4.300039
+      version: 5.012
     -
       class: Dist::Zilla::Plugin::ManifestSkip
       name: '@Filter/ManifestSkip'
-      version: 4.300039
+      version: 5.012
     -
       class: Dist::Zilla::Plugin::MetaYAML
       name: '@Filter/MetaYAML'
-      version: 4.300039
+      version: 5.012
     -
       class: Dist::Zilla::Plugin::License
       name: '@Filter/License'
-      version: 4.300039
+      version: 5.012
     -
       class: Dist::Zilla::Plugin::RunExtraTests
       name: '@Filter/RunExtraTests'
@@ -114,11 +117,11 @@ x_Dist_Zilla:
     -
       class: Dist::Zilla::Plugin::ExecDir
       name: '@Filter/ExecDir'
-      version: 4.300039
+      version: 5.012
     -
       class: Dist::Zilla::Plugin::ShareDir
       name: '@Filter/ShareDir'
-      version: 4.300039
+      version: 5.012
     -
       class: inc::MakeMaker
       name: '@Filter/=inc::MakeMaker'
@@ -126,27 +129,27 @@ x_Dist_Zilla:
     -
       class: Dist::Zilla::Plugin::Manifest
       name: '@Filter/Manifest'
-      version: 4.300039
+      version: 5.012
     -
       class: Dist::Zilla::Plugin::TestRelease
       name: '@Filter/TestRelease'
-      version: 4.300039
+      version: 5.012
     -
       class: Dist::Zilla::Plugin::ConfirmRelease
       name: '@Filter/ConfirmRelease'
-      version: 4.300039
+      version: 5.012
     -
       class: Dist::Zilla::Plugin::MetaConfig
       name: '@Filter/MetaConfig'
-      version: 4.300039
+      version: 5.012
     -
       class: Dist::Zilla::Plugin::MetaJSON
       name: '@Filter/MetaJSON'
-      version: 4.300039
+      version: 5.012
     -
       class: Dist::Zilla::Plugin::NextRelease
       name: '@Filter/NextRelease'
-      version: 4.300039
+      version: 5.012
     -
       class: Dist::Zilla::Plugin::CheckChangesHasContent
       name: '@Filter/CheckChangesHasContent'
@@ -154,15 +157,21 @@ x_Dist_Zilla:
     -
       class: Dist::Zilla::Plugin::PodCoverageTests
       name: '@Filter/PodCoverageTests'
-      version: 4.300039
+      version: 5.012
     -
       class: Dist::Zilla::Plugin::PodSyntaxTests
       name: '@Filter/PodSyntaxTests'
-      version: 4.300039
+      version: 5.012
     -
       class: Dist::Zilla::Plugin::NoTabsTests
+      config:
+        Dist::Zilla::Plugin::Test::NoTabs:
+          module_finder:
+            - ':InstallModules'
+          script_finder:
+            - ':ExecFiles'
       name: '@Filter/NoTabsTests'
-      version: 0.01
+      version: 0.05
     -
       class: Dist::Zilla::Plugin::EOLTests
       name: '@Filter/EOLTests'
@@ -171,12 +180,13 @@ x_Dist_Zilla:
       class: Dist::Zilla::Plugin::Test::Compile
       config:
         Dist::Zilla::Plugin::Test::Compile:
+          filename: t/00-compile.t
           module_finder:
             - ':InstallModules'
           script_finder:
             - ':ExecFiles'
       name: '@Filter/Test::Compile'
-      version: 2.018
+      version: 2.039
     -
       class: Dist::Zilla::Plugin::Metadata
       name: '@Filter/Metadata'
@@ -184,23 +194,23 @@ x_Dist_Zilla:
     -
       class: Dist::Zilla::Plugin::MetaResources
       name: '@Filter/MetaResources'
-      version: 4.300039
+      version: 5.012
     -
       class: Dist::Zilla::Plugin::Git::Check
       name: '@Filter/Git::Check'
-      version: 2.014
+      version: 2.017
     -
       class: Dist::Zilla::Plugin::Git::Commit
       name: '@Filter/Git::Commit'
-      version: 2.014
+      version: 2.017
     -
       class: Dist::Zilla::Plugin::Git::Tag
       name: '@Filter/Git::Tag'
-      version: 2.014
+      version: 2.017
     -
       class: Dist::Zilla::Plugin::Git::NextVersion
       name: '@Filter/Git::NextVersion'
-      version: 2.014
+      version: 2.017
     -
       class: Dist::Zilla::Plugin::ContributorsFromGit
       name: '@Filter/ContributorsFromGit'
@@ -208,7 +218,7 @@ x_Dist_Zilla:
     -
       class: Dist::Zilla::Plugin::FinderCode
       name: '@Filter/MetaProvides::Package/AUTOVIV/:InstallModulesPM'
-      version: 4.300039
+      version: 5.012
     -
       class: Dist::Zilla::Plugin::MetaProvides::Package
       config:
@@ -222,15 +232,15 @@ x_Dist_Zilla:
     -
       class: Dist::Zilla::Plugin::UploadToCPAN
       name: '@Filter/UploadToCPAN'
-      version: 4.300039
+      version: 5.012
     -
       class: Dist::Zilla::Plugin::AutoPrereqs
       name: AutoPrereqs
-      version: 4.300039
+      version: 5.012
     -
       class: Dist::Zilla::Plugin::MetaNoIndex
       name: MetaNoIndex
-      version: 4.300039
+      version: 5.012
     -
       class: Dist::Zilla::Plugin::Prereqs
       config:
@@ -238,7 +248,7 @@ x_Dist_Zilla:
           phase: develop
           type: requires
       name: DevelopRequires
-      version: 4.300039
+      version: 5.012
     -
       class: Dist::Zilla::Plugin::Prereqs
       config:
@@ -246,7 +256,7 @@ x_Dist_Zilla:
           phase: configure
           type: requires
       name: ConfigureRequires
-      version: 4.300039
+      version: 5.012
     -
       class: Dist::Zilla::Plugin::ContributorsFromGit
       name: ContributorsFromGit
@@ -254,7 +264,7 @@ x_Dist_Zilla:
     -
       class: Dist::Zilla::Plugin::CPANFile
       name: CPANFile
-      version: 4.300039
+      version: 5.012
     -
       class: Dist::Zilla::Plugin::CopyFilesFromBuild
       name: CopyFilesFromBuild
@@ -266,37 +276,52 @@ x_Dist_Zilla:
     -
       class: Dist::Zilla::Plugin::FinderCode
       name: ':InstallModules'
-      version: 4.300039
+      version: 5.012
     -
       class: Dist::Zilla::Plugin::FinderCode
       name: ':IncModules'
-      version: 4.300039
+      version: 5.012
     -
       class: Dist::Zilla::Plugin::FinderCode
       name: ':TestFiles'
-      version: 4.300039
+      version: 5.012
     -
       class: Dist::Zilla::Plugin::FinderCode
       name: ':ExecFiles'
-      version: 4.300039
+      version: 5.012
     -
       class: Dist::Zilla::Plugin::FinderCode
       name: ':ShareFiles'
-      version: 4.300039
+      version: 5.012
     -
       class: Dist::Zilla::Plugin::FinderCode
       name: ':MainModule'
-      version: 4.300039
+      version: 5.012
+    -
+      class: Dist::Zilla::Plugin::FinderCode
+      name: ':AllFiles'
+      version: 5.012
+    -
+      class: Dist::Zilla::Plugin::FinderCode
+      name: ':NoFiles'
+      version: 5.012
   zilla:
     class: Dist::Zilla::Dist::Builder
     config:
       is_trial: 1
-    version: 4.300039
+    version: 5.012
 x_authority: cpan:STEVAN
 x_contributors:
   - 'Chris Prather <chris@prather.org>'
   - 'Damien Krotkine <dkrotkine@weborama.com>'
   - 'David Golden <dagolden@cpan.org>'
+  - 'Fabrice Gabolde <fgabolde@weborama.com>'
   - 'Matthew Horsfall (alh) <wolfsage@gmail.com>'
+  - 'Matthew Horsfall <WolfSage@gmail.com>'
+  - 'Matthias Bloch <matthias.bloch@puffin.ch>'
+  - 'Ovid <curtis_ovid_poe@yahoo.com>'
+  - 'PWBENNETT <paul.w.bennett@gmail.com>'
   - 'Steffen Mueller <smueller@cpan.org>'
+  - 'Stuart A Johnston <saj_git@thecommune.net>'
   - 'Toby Inkster <mail@tobyinkster.co.uk>'
+  - 'vti <viacheslav.t@gmail.com>'

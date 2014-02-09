@@ -5,7 +5,7 @@ use warnings;
 
 use mop::internals::util;
 
-our $VERSION   = '0.02';
+our $VERSION   = '0.03';
 our $AUTHORITY = 'cpan:STEVAN';
 
 use parent 'mop::object', 'mop::internals::observable';
@@ -215,6 +215,9 @@ sub FINALIZE {
         *$name = mop::internals::util::subname($name, $body);
     }
 
+    mop::internals::util::set_meta_magic($self, $self->name);
+    mop::internals::util::incr_attr_generation($self);
+
     $self->fire('after:FINALIZE');
 }
 
@@ -400,7 +403,7 @@ Florian Ragwitz <rafl@debian.org>
 
 =head1 COPYRIGHT AND LICENSE
 
-This software is copyright (c) 2013 by Infinity Interactive.
+This software is copyright (c) 2013-2014 by Infinity Interactive.
 
 This is free software; you can redistribute it and/or modify it under
 the same terms as the Perl 5 programming language system itself.

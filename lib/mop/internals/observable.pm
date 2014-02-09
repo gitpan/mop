@@ -7,7 +7,7 @@ use Scalar::Util qw[ refaddr ];
 
 use mop::internals::util;
 
-our $VERSION   = '0.02';
+our $VERSION   = '0.03';
 our $AUTHORITY = 'cpan:STEVAN';
 
 mop::internals::util::init_attribute_storage(my %callbacks);
@@ -42,7 +42,7 @@ sub fire {
 
 sub has_events {
     my $self = shift;
-    return $callbacks{ $self } && !!%{ ${ $callbacks{ $self } } };
+    return $callbacks{ $self } && ${ $callbacks{ $self } } && !!%{ ${ $callbacks{ $self } } };
 }
 
 sub __INIT_METACLASS__ {
@@ -103,7 +103,7 @@ Florian Ragwitz <rafl@debian.org>
 
 =head1 COPYRIGHT AND LICENSE
 
-This software is copyright (c) 2013 by Infinity Interactive.
+This software is copyright (c) 2013-2014 by Infinity Interactive.
 
 This is free software; you can redistribute it and/or modify it under
 the same terms as the Perl 5 programming language system itself.
